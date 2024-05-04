@@ -24,19 +24,3 @@ hC = 0x9a2e62818ad55aeb8ac319820b2d595660b9af57c0c7123bd6c6dfde2d9a1753
 rC = 0xeb71f24ce44aa99d891bba7623414355e63bf92a74d753f7cbaab7831a357908
 sC = 0x8060d40bc3bf41f5d845e3ef6ae2270047a1e2a3e6c057bfc577d7d884089d47
 
-# Recover Cheolsu's random number
-# s = k^-1 * (e + rd) mod n
-# => k = s^-1 * (e + rd) mod n
-kC = inverse_mod(sC, n) * (hC + rC * dC)
-kC = kC % n
-assert rC == (kC * G).xy()[0]
-QC = dC * G
-
-print(hex(kC))
-
-u1 = hC * inverse_mod(sC, n)
-u2 = rC * inverse_mod(sC, n)
-u1 = u1 % n
-u2 = u2 % n
-PC = u1 * G + u2 * QC
-assert PC.xy()[0] == rC
