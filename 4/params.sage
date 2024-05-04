@@ -1,0 +1,42 @@
+from Crypto.Util.number import long_to_bytes, bytes_to_long
+from hashlib import sha256
+
+# Constructing secp256k1 curve
+p = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f
+E = EllipticCurve(GF(p), [0, 7])
+
+# Generator and its order
+G = E(0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798, 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8)
+n = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141
+
+# YeongSu signing Cheolsu's message
+mY = b"helloecdsa"
+hY = 0x568b4901cc2dac4a13af161bbf6b2087c94d8b8223755fd121ec6aa0519ecee2
+rY = 0xda7866632109e77f0d3c5bdd49031e6d9a940fcb7d29ea2f858b991d1f17cef8
+sY = 0xa4a700ac4f18634ac845739e0342cd8335bf6e0606ca9dc9d668abf9ed812e6d
+QY = E(0xa51208adff894cdd79d4d7d967aa4d492256ba4d527661b10ae7cfd6e15f28a6, 0x6fbfd9a270cd717afb0949e1c40fd2754b46f4f8472ac5711de0351fe81bbd80)
+
+
+# Cheolsu verifying YeongSu's ECDSA program
+dC = 0xbde07e98f0437a531c014a1fe6fd69c2cfb6c3657072696e7432303233383431
+mC = b"cryptoanalysiscontest"
+hC = 0x9a2e62818ad55aeb8ac319820b2d595660b9af57c0c7123bd6c6dfde2d9a1753
+rC = 0xeb71f24ce44aa99d891bba7623414355e63bf92a74d753f7cbaab7831a357908
+sC = 0x8060d40bc3bf41f5d845e3ef6ae2270047a1e2a3e6c057bfc577d7d884089d47
+
+# Recover Cheolsu's random number
+# s = k^-1 * (e + rd) mod n
+# => k = s^-1 * (e + rd) mod n
+kC = inverse_mod(sC, n) * (hC + rC * dC)
+kC = kC % n
+assert rC == (kC * G).xy()[0]
+QC = dC * G
+
+print(hex(kC))
+
+u1 = hC * inverse_mod(sC, n)
+u2 = rC * inverse_mod(sC, n)
+u1 = u1 % n
+u2 = u2 % n
+PC = u1 * G + u2 * QC
+assert PC.xy()[0] == rC
