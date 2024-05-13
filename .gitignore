@@ -1,3 +1,6 @@
+__pycache__
+.venv
+
 *.sage.py
 
 .DS_Store
