@@ -13,11 +13,15 @@ ciphertexts = list(map(lambda ct: bytes.fromhex(ct), ciphertexts))
 
 pairs = list(zip(plaintexts, ciphertexts))
 
-# Load reference AES wave
-# N, L, reference_wave = load_wave_file("2024-contest-sca-tr-reference.bin")
-# print(reference_wave)
+fig, (plot1, plot2) = plt.subplots(2, 1)
 
-# Load AES wave given as challenge
+# Load reference AES wave
+N, L, reference_wave = load_wave_file("2024-contest-sca-tr-reference.bin")
+plot1.plot(range(L), reference_wave[0])
+
+# Load some AES waves given as challenge
 N, L, partial_waves = load_wave_file("2024-contest-sca-tr.bin")
-plt.plot(range(L), partial_waves[0])
+for partial_wave in partial_waves[:10]:
+    plot2.plot(range(L), partial_wave)
+
 plt.show()
