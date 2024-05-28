@@ -1,0 +1,515 @@
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+int64_t cpucycles(void) {
+    unsigned int hi, lo;
+
+    __asm__ __volatile__("rdtsc\n\t" : "=a"(lo), "=d"(hi));
+
+    return ((int64_t)lo) | (((int64_t)hi) << 32);
+}
+
+// BENCH ROUND
+#define BENCH_ROUND 1000
+
+// round of block cipher
+#define NUM_ROUND 80
+
+// basic operation
+#define ROR(x, r) ((x >> r) | (x << (8 - r)))
+#define ROL(x, r) ((x << r) | (x >> (8 - r)))
+
+// constant :: cryptogr in ASCII
+#define CONST0 0x63
+#define CONST1 0x72
+#define CONST2 0x79
+#define CONST3 0x70
+#define CONST4 0x74
+#define CONST5 0x6F
+#define CONST6 0x67
+#define CONST7 0x72
+
+// constant :: shift offset
+#define OFF1 1
+#define OFF3 3
+#define OFF5 5
+#define OFF7 7
+
+// constant :: nonce value
+#define NONCE1 0x12
+#define NONCE2 0x34
+#define NONCE3 0x56
+#define NONCE4 0x78
+#define NONCE5 0x9A
+#define NONCE6 0xBC
+#define NONCE7 0xDE
+
+// void key_scheduling(uint8_t* master_key, uint8_t* rk) {
+//     uint32_t i = 0;
+
+//     // initialization
+//     for (i = 0; i < 8; i++) {
+//         rk[i] = master_key[i];
+//     }
+
+//     for (i = 1; i < NUM_ROUND; i++) {
+//         rk[i * 8 + 0] = ROL(rk[(i - 1) * 8 + 0], (i + OFF1) % 8) + ROL(CONST0, (i + OFF3) % 8);
+//         rk[i * 8 + 1] = ROL(rk[(i - 1) * 8 + 1], (i + OFF5) % 8) + ROL(CONST1, (i + OFF7) % 8);
+//         rk[i * 8 + 2] = ROL(rk[(i - 1) * 8 + 2], (i + OFF1) % 8) + ROL(CONST2, (i + OFF3) % 8);
+//         rk[i * 8 + 3] = ROL(rk[(i - 1) * 8 + 3], (i + OFF5) % 8) + ROL(CONST3, (i + OFF7) % 8);
+
+//         rk[i * 8 + 4] = ROL(rk[(i - 1) * 8 + 4], (i + OFF1) % 8) + ROL(CONST4, (i + OFF3) % 8);
+//         rk[i * 8 + 5] = ROL(rk[(i - 1) * 8 + 5], (i + OFF5) % 8) + ROL(CONST5, (i + OFF7) % 8);
+//         rk[i * 8 + 6] = ROL(rk[(i - 1) * 8 + 6], (i + OFF1) % 8) + ROL(CONST6, (i + OFF3) % 8);
+//         rk[i * 8 + 7] = ROL(rk[(i - 1) * 8 + 7], (i + OFF5) % 8) + ROL(CONST7, (i + OFF7) % 8);
+//     }
+// }
+
+// void ROUND_FUNC(uint8_t* imm, uint8_t* rk, uint8_t index, uint8_t loop_indx, uint8_t offset) {
+//     imm[index] = rk[loop_indx * 8 + index] ^ imm[index];
+//     imm[index] = rk[loop_indx * 8 + index] ^ imm[index - 1] + imm[index];
+//     ROL(imm[index], offset);
+// }
+
+// void block_encryption(uint8_t* PT, uint8_t* rk, uint8_t* CT) {
+//     uint32_t i = 0;
+//     uint32_t j = 0;
+//     uint8_t imm[8] = {
+//         0,
+//     };
+//     uint8_t tmp = 0;
+
+//     for (i = 0; i < 8; i++) {
+//         imm[i] = PT[i];
+//     }
+
+//     for (i = 0; i < NUM_ROUND; i++) {
+//         for (j = 7; j > 0; j--) {
+//             ROUND_FUNC(imm, rk, j, i, j);
+//         }
+
+//         // Rotate
+//         tmp = imm[0];
+//         for (j = 1; j < 8; j++) {
+//             imm[j - 1] = imm[j];
+//         }
+//         imm[7] = tmp;
+//     }
+
+//     for (i = 0; i < 8; i++) {
+//         CT[i] = imm[i];
+//     }
+// }
+
+// void CTR_mode(uint8_t* PT, uint8_t* master_key, uint8_t* CT, uint8_t num_enc) {
+//     uint32_t i = 0;
+//     uint32_t j = 0;
+//     uint8_t imm[8] = {
+//         0,
+//     };
+//     uint8_t imm2[8] = {
+//         0,
+//     };
+//     uint8_t ctr = 0;
+
+//     uint8_t rk[8 * NUM_ROUND] = {
+//         0,
+//     };
+
+//     // key schedule
+//     key_scheduling(master_key, rk);
+
+//     // nonce setting
+//     imm[1] = NONCE1;
+//     imm[2] = NONCE2;
+//     imm[3] = NONCE3;
+//     imm[4] = NONCE4;
+//     imm[5] = NONCE5;
+//     imm[6] = NONCE6;
+//     imm[7] = NONCE7;
+
+//     for (i = 0; i < num_enc; i++) {
+//         // ctr setting
+//         imm[0] = ctr++;
+//         block_encryption(imm, rk, imm2);
+//         for (j = 0; j < 8; j++) {
+//             CT[i * 8 + j] = PT[i * 8 + j] ^ imm2[j];
+//         }
+//     }
+// }
+
+// void POLY_MUL_RED(uint8_t* IN1, uint8_t* IN2, uint8_t* OUT) {
+//     uint64_t* in1_64_p = (uint64_t*)IN1;
+//     uint64_t* in2_64_p = (uint64_t*)IN2;
+//     uint64_t* out_64_p = (uint64_t*)OUT;
+
+//     uint64_t in1_64 = in1_64_p[0];
+//     uint64_t in2_64 = in2_64_p[0];
+//     uint64_t one = 1;
+
+//     uint64_t result[2] = {
+//         0,
+//     };
+
+//     int32_t i = 0;
+
+//     for (i = 0; i < 64; i++) {
+//         if (((one << i) & in1_64) > 0) {
+//             result[0] ^= in2_64 << i;
+//             if (i != 0) {
+//                 result[1] ^= in2_64 >> (64 - i);
+//             }
+//         }
+//     }
+
+//     // reduction
+//     result[0] ^= result[1];
+//     result[0] ^= result[1] << 9;
+//     result[0] ^= result[1] >> 55;
+//     result[0] ^= (result[1] >> 55) << 9;
+
+//     out_64_p[0] = result[0];
+// }
+
+// void AUTH_mode(uint8_t* CT, uint8_t* AUTH, uint8_t num_auth) {
+//     uint8_t AUTH_nonce[8] = {
+//         0,
+//     };
+//     uint8_t AUTH_inter[8] = {
+//         0,
+//     };
+//     uint32_t i, j;
+
+//     // nonce setting
+//     AUTH_nonce[0] = num_auth;
+//     AUTH_nonce[1] = num_auth ^ NONCE1;
+//     AUTH_nonce[2] = num_auth & NONCE2;
+//     AUTH_nonce[3] = num_auth | NONCE3;
+//     AUTH_nonce[4] = num_auth ^ NONCE4;
+//     AUTH_nonce[5] = num_auth & NONCE5;
+//     AUTH_nonce[6] = num_auth | NONCE6;
+//     AUTH_nonce[7] = num_auth ^ NONCE7;
+
+//     POLY_MUL_RED(AUTH_nonce, AUTH_nonce, AUTH_inter);
+
+//     for (i = 0; i < num_auth; i++) {
+//         for (j = 0; j < 8; j++) {
+//             AUTH_inter[j] ^= CT[i * 8 + j];
+//         }
+//         POLY_MUL_RED(AUTH_nonce, AUTH_inter, AUTH_inter);
+//         POLY_MUL_RED(AUTH_inter, AUTH_inter, AUTH_inter);
+//     }
+
+//     for (i = 0; i < 8; i++) {
+//         AUTH[i] = AUTH_inter[i];
+//     }
+// }
+
+// void ENC_AUTH(uint8_t* PT, uint8_t* master_key, uint8_t* CT, uint8_t* AUTH, uint8_t length_in_byte) {
+//     uint8_t num_enc_auth = length_in_byte / 8;
+
+//     CTR_mode(PT, master_key, CT, num_enc_auth);
+//     AUTH_mode(CT, AUTH, num_enc_auth);
+// }
+
+void new_key_scheduling(uint8_t* master_key, uint8_t* rk) {
+    uint32_t i = 0;
+    uint32_t cache[64] = {795, 14649, 971, 14392, 931, 14263, 827, 14649,
+                          1590, 114, 1943, 112, 1863, 111, 1654, 114,
+                          3180, 228, 3887, 224, 3726, 222, 3308, 228,
+                          6360, 457, 7774, 449, 7453, 445, 6617, 457,
+                          12721, 915, 15548, 899, 14906, 891, 13235, 915,
+                          99, 1831, 121, 1799, 116, 1782, 103, 1831,
+                          198, 3662, 242, 3598, 232, 3565, 206, 3662,
+                          397, 7324, 485, 7196, 465, 7131, 413, 7324};
+
+    ((uint64_t*)rk)[i] = ((uint64_t*)master_key)[i];
+
+    for (i = 1; i < NUM_ROUND; i++) {
+        rk[i * 8 + 0] = ROL(rk[(i - 1) * 8 + 0], (i + OFF1) % 8) + cache[(i * 8 + 0) % 64];
+        rk[i * 8 + 1] = ROL(rk[(i - 1) * 8 + 1], (i + OFF5) % 8) + cache[(i * 8 + 1) % 64];
+        rk[i * 8 + 2] = ROL(rk[(i - 1) * 8 + 2], (i + OFF1) % 8) + cache[(i * 8 + 2) % 64];
+        rk[i * 8 + 3] = ROL(rk[(i - 1) * 8 + 3], (i + OFF5) % 8) + cache[(i * 8 + 3) % 64];
+
+        rk[i * 8 + 4] = ROL(rk[(i - 1) * 8 + 4], (i + OFF1) % 8) + cache[(i * 8 + 4) % 64];
+        rk[i * 8 + 5] = ROL(rk[(i - 1) * 8 + 5], (i + OFF5) % 8) + cache[(i * 8 + 5) % 64];
+        rk[i * 8 + 6] = ROL(rk[(i - 1) * 8 + 6], (i + OFF1) % 8) + cache[(i * 8 + 6) % 64];
+        rk[i * 8 + 7] = ROL(rk[(i - 1) * 8 + 7], (i + OFF5) % 8) + cache[(i * 8 + 7) % 64];
+    }
+}
+
+void new_ROUND_FUNC(uint8_t* imm, uint8_t* rk, uint8_t index, uint8_t loop_indx, uint8_t offset) {
+    imm[index] = rk[loop_indx * 8 + index] ^ (imm[index - 1] + (rk[loop_indx * 8 + index] ^ imm[index]));
+    // ROL(imm[index], offset);
+}
+
+void new_block_encryption(uint8_t* PT, uint8_t* rk, uint8_t* CT) {
+    uint32_t i = 0;
+    uint32_t j = 0;
+    uint8_t imm[8] = {
+        0,
+    };
+
+    ((uint64_t*)imm)[0] = ((uint64_t*)PT)[0];
+
+    for (i = 0; i < NUM_ROUND; i++) {
+        for (j = 7; j > 0; j--) {
+            new_ROUND_FUNC(imm, rk, j, i, j);
+        }
+
+        // Rotate
+        ((uint64_t*)imm)[0] = ((uint64_t*)imm)[0] >> 8 | ((uint64_t*)imm)[0] << 56;
+    }
+
+    ((uint64_t*)CT)[0] = ((uint64_t*)imm)[0];
+}
+
+void new_CTR_mode(uint8_t* PT, uint8_t* master_key, uint8_t* CT, uint8_t num_enc) {
+    uint32_t i = 0;
+    uint32_t j = 0;
+    uint8_t imm[8] = {};
+    uint8_t imm2[8] = {};
+
+    uint8_t rk[8 * NUM_ROUND] = {
+        0,
+    };
+
+    // key schedule
+    new_key_scheduling(master_key, rk);
+
+    ((uint64_t*)imm)[0] = 16049873013674611200ull;
+    for (i = 0; i < num_enc; i++) {
+        // ctr setting
+        imm[0] = i;
+        new_block_encryption(imm, rk, imm2);
+        ((uint64_t*)CT)[i] = ((uint64_t*)PT)[i] ^ ((uint64_t*)imm2)[0];
+    }
+}
+
+void new_POLY_MUL_RED(uint8_t* IN1, uint8_t* IN2, uint8_t* OUT) {
+    uint64_t* in1_64_p = (uint64_t*)IN1;
+    uint64_t* in2_64_p = (uint64_t*)IN2;
+    uint64_t* out_64_p = (uint64_t*)OUT;
+
+    uint64_t in1_64 = in1_64_p[0];
+    uint64_t in2_64 = in2_64_p[0];
+
+    uint64_t result[2] = {
+        0,
+    };
+
+    int32_t i = 0;
+
+    for (i = 0; i < 64; i++) {
+        if ((1ll << i) & in1_64) {
+            result[0] ^= in2_64 << i;
+            if (i != 0) {
+                result[1] ^= in2_64 >> (64 - i);
+            }
+        }
+    }
+    // reduction
+    result[0] ^= result[1];
+    result[0] ^= result[1] << 9;
+    result[0] ^= result[1] >> 55;
+    result[0] ^= (result[1] >> 55) << 9;
+
+    out_64_p[0] = result[0];
+}
+
+void new_AUTH_mode(uint8_t* CT, uint8_t* AUTH, uint8_t num_auth) {
+    uint8_t AUTH_nonce[8] = {
+        0,
+    };
+    uint8_t AUTH_inter[8] = {
+        0,
+    };
+    uint32_t i, j;
+
+    // nonce setting
+    AUTH_nonce[0] = num_auth;
+    AUTH_nonce[1] = num_auth ^ NONCE1;
+    AUTH_nonce[2] = num_auth & NONCE2;
+    AUTH_nonce[3] = num_auth | NONCE3;
+    AUTH_nonce[4] = num_auth ^ NONCE4;
+    AUTH_nonce[5] = num_auth & NONCE5;
+    AUTH_nonce[6] = num_auth | NONCE6;
+    AUTH_nonce[7] = num_auth ^ NONCE7;
+
+    new_POLY_MUL_RED(AUTH_nonce, AUTH_nonce, AUTH_inter);
+
+    for (i = 0; i < num_auth; i++) {
+        ((uint64_t*)AUTH_inter)[0] ^= ((uint64_t*)CT)[i];
+        new_POLY_MUL_RED(AUTH_nonce, AUTH_inter, AUTH_inter);
+        new_POLY_MUL_RED(AUTH_inter, AUTH_inter, AUTH_inter);
+    }
+
+    ((uint64_t*)AUTH)[0] = ((uint64_t*)AUTH_inter)[0];
+}
+
+void new_ENC_AUTH(uint8_t* PT, uint8_t* master_key, uint8_t* CT, uint8_t* AUTH, uint8_t length_in_byte) {
+    uint8_t num_enc_auth = length_in_byte / 8;
+
+    new_CTR_mode(PT, master_key, CT, num_enc_auth);
+    new_AUTH_mode(CT, AUTH, num_enc_auth);
+}
+
+// PT range (1-255 bytes)
+#define LENGTH0 64
+#define LENGTH1 128
+#define LENGTH2 192
+
+int main(int argc, const char* argv[]) {
+    uint8_t plaintext_0[LENGTH0] = {
+        0x42, 0xFB, 0x9F, 0xE0, 0x59, 0x81, 0x5A, 0x81, 0x66, 0xA1, 0x0E, 0x5C, 0x4E, 0xB4, 0xDA, 0xEC,
+        0x2F, 0xF5, 0x60, 0x7E, 0x8A, 0xED, 0x3B, 0xCA, 0x2B, 0xD5, 0x82, 0x69, 0x1D, 0xC3, 0x84, 0x13,
+        0x0E, 0xA6, 0x6A, 0x10, 0xB3, 0x3C, 0xB4, 0x4E, 0x9A, 0x80, 0x4F, 0x61, 0x06, 0x82, 0x17, 0xF4,
+        0xCA, 0x76, 0xBA, 0x84, 0xE2, 0xDC, 0xC9, 0x66, 0x4F, 0xA5, 0x07, 0x8C, 0x8E, 0x36, 0xD1, 0x97};
+    uint8_t plaintext_1[LENGTH1] = {
+        0x4E, 0xE2, 0xB3, 0x54, 0x05, 0x90, 0xB0, 0xFD, 0x87, 0x9B, 0x30, 0xAB, 0x19, 0xC4, 0x66, 0x8F,
+        0x2F, 0x22, 0x30, 0xA8, 0x5E, 0x23, 0x5B, 0x0B, 0xB1, 0xEB, 0xD6, 0xAD, 0x10, 0x0F, 0x33, 0x25,
+        0x90, 0x66, 0xC5, 0x82, 0xE7, 0x1B, 0x47, 0xCA, 0xBE, 0x61, 0xA3, 0x91, 0xDB, 0xC2, 0x19, 0x97,
+        0x04, 0x6A, 0x73, 0x02, 0x08, 0x70, 0x28, 0x44, 0x38, 0x69, 0xB5, 0xCE, 0x55, 0x95, 0xCB, 0x90,
+        0xD3, 0x8A, 0xE2, 0x60, 0x89, 0x2A, 0x15, 0xCA, 0x36, 0x9B, 0x73, 0xEC, 0xEF, 0xD0, 0x43, 0x0B,
+        0xA7, 0xFC, 0xDA, 0x4B, 0xAB, 0xE7, 0xB3, 0xC9, 0xB7, 0xF5, 0xD8, 0x86, 0xA2, 0xC5, 0x41, 0x5D,
+        0x18, 0xC3, 0x0C, 0x30, 0xDB, 0xC2, 0xFE, 0x68, 0x42, 0x3D, 0x33, 0xFA, 0x6D, 0xA0, 0xD3, 0x6F,
+        0x03, 0x1F, 0x87, 0x75, 0x3C, 0x1E, 0x81, 0x58, 0x88, 0xAA, 0xF4, 0x90, 0x56, 0xA1, 0x93, 0x64};
+    uint8_t plaintext_2[LENGTH2] = {
+        0xA7, 0xF1, 0xD9, 0x2A, 0x82, 0xC8, 0xD8, 0xFE, 0x43, 0x4D, 0x98, 0x55, 0x8C, 0xE2, 0xB3, 0x47,
+        0x17, 0x11, 0x98, 0x54, 0x2F, 0x11, 0x2D, 0x05, 0x58, 0xF5, 0x6B, 0xD6, 0x88, 0x07, 0x99, 0x92,
+        0x48, 0x33, 0x62, 0x41, 0xF3, 0x0D, 0x23, 0xE5, 0x5F, 0x30, 0xD1, 0xC8, 0xED, 0x61, 0x0C, 0x4B,
+        0x02, 0x35, 0x39, 0x81, 0x84, 0xB8, 0x14, 0xA2, 0x9C, 0xB4, 0x5A, 0x67, 0x2A, 0xCA, 0xE5, 0x48,
+        0xE9, 0xC5, 0xF1, 0xB0, 0xC4, 0x15, 0x8A, 0xE5, 0x9B, 0x4D, 0x39, 0xF6, 0xF7, 0xE8, 0xA1, 0x05,
+        0xD3, 0xFE, 0xED, 0xA5, 0xD5, 0xF3, 0xD9, 0xE4, 0x5B, 0xFA, 0x6C, 0xC3, 0x51, 0xE2, 0x20, 0xAE,
+        0x0C, 0xE1, 0x06, 0x98, 0x6D, 0x61, 0xFF, 0x34, 0xA1, 0x1E, 0x19, 0xFD, 0x36, 0x50, 0xE9, 0xB7,
+        0x81, 0x8F, 0xC3, 0x3A, 0x1E, 0x0F, 0xC0, 0x2C, 0x44, 0x55, 0x7A, 0xC8, 0xAB, 0x50, 0xC9, 0xB2,
+        0xDE, 0xB2, 0xF6, 0xB5, 0xE2, 0x4C, 0x4F, 0xDD, 0x9F, 0x88, 0x67, 0xBD, 0xCE, 0x1F, 0xF2, 0x61,
+        0x00, 0x8E, 0x78, 0x97, 0x97, 0x0E, 0x34, 0x62, 0x07, 0xD7, 0x5E, 0x47, 0xA1, 0x58, 0x29, 0x8E,
+        0x5B, 0xA2, 0xF5, 0x62, 0x46, 0x86, 0x9C, 0xC4, 0x2E, 0x36, 0x2A, 0x02, 0x73, 0x12, 0x64, 0xE6,
+        0x06, 0x87, 0xEF, 0x53, 0x09, 0xD1, 0x08, 0x53, 0x4F, 0x51, 0xF8, 0x65, 0x8F, 0xB4, 0xF0, 0x80};
+
+    uint8_t CT_TMP[LENGTH2] = {
+        0,
+    };
+
+    uint8_t CT0[LENGTH0] = {
+        0x08, 0x41, 0x8B, 0x3C, 0x6F, 0xAB, 0x1A, 0xBD, 0x68, 0x56, 0x33, 0xD9, 0x9B, 0x3D, 0xC7, 0xDF,
+        0x69, 0x01, 0x9E, 0xB4, 0x46, 0xC9, 0x55, 0xE4, 0xA1, 0x2C, 0x85, 0xD2, 0x5E, 0x58, 0x8F, 0x46,
+        0x4C, 0x10, 0xCA, 0x10, 0xB9, 0xBA, 0x20, 0xC6, 0xCC, 0xC3, 0xD6, 0x58, 0x0F, 0x27, 0x76, 0x8B,
+        0x14, 0xB6, 0xA0, 0x2A, 0x42, 0x7C, 0xDB, 0x7C, 0xFD, 0x40, 0xE4, 0xE3, 0xF9, 0x41, 0xDE, 0x06};
+    uint8_t CT1[LENGTH1] = {
+        0x60, 0x50, 0xF3, 0x58, 0xB7, 0xFA, 0xBC, 0xB1, 0xA1, 0x14, 0xF3, 0xDE, 0x1C, 0xE7, 0xE3, 0xC4,
+        0xC1, 0x8E, 0xDE, 0x32, 0x92, 0x5B, 0x51, 0xF9, 0x1F, 0x92, 0xEF, 0xDE, 0x37, 0x3E, 0xC8, 0xCC,
+        0x9E, 0xB0, 0x91, 0x5A, 0x91, 0x7D, 0x47, 0x5A, 0xB8, 0x22, 0x94, 0xC0, 0x02, 0x4D, 0x60, 0xD8,
+        0xFA, 0x9A, 0x81, 0x34, 0x98, 0xB4, 0x36, 0x52, 0xC6, 0x24, 0x78, 0x11, 0xAE, 0xC8, 0xE4, 0xED,
+        0xAD, 0xE0, 0xFA, 0xC4, 0xF3, 0x88, 0x71, 0xEE, 0xA0, 0x7C, 0x08, 0xA1, 0x62, 0x0B, 0x3E, 0x08,
+        0xF9, 0x18, 0x9C, 0x99, 0x7F, 0x57, 0xD1, 0x43, 0x29, 0x04, 0xE9, 0x8D, 0x8D, 0x6C, 0x52, 0xBC,
+        0x86, 0x0D, 0x60, 0x00, 0x85, 0xDC, 0x26, 0x60, 0xB4, 0xE6, 0xFC, 0xF3, 0xCC, 0xE7, 0x22, 0x68,
+        0x8D, 0x77, 0x2D, 0x1B, 0x64, 0x02, 0x37, 0x76, 0x26, 0x8F, 0xB1, 0x07, 0x35, 0x14, 0xD4, 0xB1};
+    uint8_t CT2[LENGTH2] = {
+        0x59, 0xD7, 0x41, 0x1E, 0xA8, 0x96, 0xB8, 0x6E, 0x97, 0xE8, 0xA3, 0xCA, 0x59, 0x31, 0xA2, 0x60,
+        0xC5, 0xF9, 0x6E, 0x8A, 0xAB, 0xD1, 0xA3, 0x57, 0xB0, 0xE2, 0xB2, 0x07, 0xFF, 0xC2, 0xB6, 0xE3,
+        0x1E, 0x31, 0x9E, 0xC1, 0x3D, 0x2F, 0xF7, 0x79, 0x93, 0x91, 0x6E, 0xE3, 0x04, 0x76, 0xD9, 0x08,
+        0xA8, 0xC1, 0x23, 0xAB, 0xEC, 0x1C, 0x66, 0x6C, 0xDC, 0x17, 0x07, 0xFA, 0xB1, 0x53, 0x56, 0x55,
+        0x37, 0x3B, 0xD1, 0xFC, 0x46, 0xB3, 0xF2, 0xDD, 0xCF, 0x90, 0x3A, 0xC1, 0x3A, 0x93, 0xA8, 0xEA,
+        0xA1, 0xDE, 0x73, 0x13, 0x29, 0xBB, 0x5F, 0xBE, 0x93, 0xF5, 0x4D, 0x6A, 0x5E, 0x4F, 0xA7, 0x37,
+        0xFA, 0xBB, 0x22, 0x00, 0xCB, 0x0B, 0xF3, 0x30, 0xED, 0x47, 0xBE, 0x5E, 0xB7, 0xAF, 0xC4, 0x3C,
+        0x2B, 0x43, 0xA1, 0x78, 0xFE, 0x43, 0x6A, 0x1A, 0xC4, 0x4E, 0xFF, 0x1D, 0x18, 0xB1, 0xE2, 0x37,
+        0x00, 0xC4, 0x9E, 0x11, 0x18, 0x22, 0xBF, 0xBD, 0x6B, 0xFD, 0xAC, 0xB2, 0x2B, 0x7C, 0x53, 0x56,
+        0x32, 0x76, 0xBE, 0x99, 0xC3, 0xDE, 0xAA, 0x80, 0x8F, 0xB0, 0x37, 0xC6, 0x66, 0xCD, 0xD6, 0xCF,
+        0xAD, 0xB0, 0xF9, 0x92, 0xD8, 0x34, 0xB8, 0x68, 0x42, 0xC7, 0x25, 0x59, 0xCA, 0x75, 0x41, 0x75,
+        0xCC, 0x83, 0xC5, 0x49, 0x31, 0x25, 0x4A, 0x8D, 0xEF, 0xE2, 0xD5, 0xE8, 0xE4, 0x5D, 0x33, 0x2D};
+
+    uint8_t AUTH_TMP[8] = {
+        0,
+    };
+
+    uint8_t AUTH0[8] = {0x1B, 0x82, 0x84, 0xE5, 0xE1, 0x1D, 0x78, 0x4A};
+    uint8_t AUTH1[8] = {0x48, 0x80, 0x25, 0x8E, 0x7D, 0xA6, 0x71, 0xD2};
+    uint8_t AUTH2[8] = {0x52, 0x8E, 0xF0, 0x79, 0xD4, 0xD9, 0x05, 0x05};
+
+    uint8_t master_key_0[8] = {0xF5, 0xD3, 0x8D, 0x7F, 0x87, 0x58, 0x88, 0xFC};
+    uint8_t master_key_1[8] = {0x47, 0x33, 0xC9, 0xFC, 0x8E, 0x35, 0x88, 0x11};
+    uint8_t master_key_2[8] = {0xD8, 0x99, 0x28, 0xC3, 0xDA, 0x29, 0x6B, 0xB0};
+
+    uint32_t i = 0;
+
+    long long int cycles, cycles1, cycles2;
+
+    printf("--- TEST VECTOR ---\n");
+
+    new_ENC_AUTH(plaintext_0, master_key_0, CT_TMP, AUTH_TMP, LENGTH0);
+    for (i = 0; i < LENGTH0; i++) {
+        if (CT_TMP[i] != CT0[i]) {
+            printf("wrong result.\n");
+            return 0;
+        }
+        CT_TMP[i] = 0;
+    }
+    for (i = 0; i < 8; i++) {
+        if (AUTH_TMP[i] != AUTH0[i]) {
+            printf("wrong result.\n");
+            return 0;
+        }
+        AUTH_TMP[i] = 0;
+    }
+
+    new_ENC_AUTH(plaintext_1, master_key_1, CT_TMP, AUTH_TMP, LENGTH1);
+    for (i = 0; i < LENGTH1; i++) {
+        if (CT_TMP[i] != CT1[i]) {
+            printf("wrong result.\n");
+            return 0;
+        }
+        CT_TMP[i] = 0;
+    }
+    for (i = 0; i < 8; i++) {
+        if (AUTH_TMP[i] != AUTH1[i]) {
+            printf("wrong result.\n");
+            return 0;
+        }
+        AUTH_TMP[i] = 0;
+    }
+
+    new_ENC_AUTH(plaintext_2, master_key_2, CT_TMP, AUTH_TMP, LENGTH2);
+    for (i = 0; i < LENGTH2; i++) {
+        if (CT_TMP[i] != CT2[i]) {
+            printf("wrong result.\n");
+            return 0;
+        }
+        CT_TMP[i] = 0;
+    }
+    for (i = 0; i < 8; i++) {
+        if (AUTH_TMP[i] != AUTH2[i]) {
+            printf("wrong result.\n");
+            return 0;
+        }
+        AUTH_TMP[i] = 0;
+    }
+    printf("test pass. \n");
+
+    printf("--- BENCHMARK ---\n");
+    cycles = 0;
+    cycles1 = cpucycles();
+    for (i = 0; i < BENCH_ROUND; i++) {
+        // ENC_AUTH(plaintext_2, master_key_2, CT_TMP, AUTH_TMP, LENGTH2);
+    }
+    cycles2 = cpucycles();
+    cycles = cycles2 - cycles1;
+    printf("Original implementation runs in ................. %8lld cycles", cycles / BENCH_ROUND);
+    printf("\n");
+
+    cycles = 0;
+    cycles1 = cpucycles();
+    for (i = 0; i < BENCH_ROUND; i++) {
+        new_ENC_AUTH(plaintext_2, master_key_2, CT_TMP, AUTH_TMP, LENGTH2);
+    }
+    cycles2 = cpucycles();
+    cycles = cycles2 - cycles1;
+    printf("Improved implementation runs in ................. %8lld cycles", cycles / BENCH_ROUND);
+    printf("\n");
+
+    return 0;
+}
