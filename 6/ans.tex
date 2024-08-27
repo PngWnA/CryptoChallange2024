@@ -1,0 +1,59 @@
+\section{최적화 기법}
+
+알고리즘의 일부분에 적용되는 최적화 기법은 알고리즘의 처리 순서에 맞추어 소개하고, 그 뒤에 전체 알고리즘에 적용되는 기법을 설명한다.
+
+\subsection{알고리즘 실행 단계별 최적화}
+
+\subsubsection{실행 전 계산된 값 사용 (\texttt{key_scheduling})}
+
+\texttt{key_scheduling} 함수의 \texttt{ROL(CONSTANT\_X, (i + OFFSET\_Y) \% 8)}는 8라운드마다 동일한 값이 반복되며, 
+상수값을 계산해서 사용하기 때문에 Plaintext와 Master Key에 의존하지 않는다. 
+따라서 아래 64개 값을 실행 전에 계산하여 실행 중 연산량을 줄일 수 있다.
+
+\subsubsection{함수 인라인화 및 Loop Unrolling (\texttt{block_encryption})}
+
+\texttt{block_encryption} 함수는 매 라운드마다 7회의 \texttt{ROUND_FUNC} 함수를 호출한다. 
+해당 함수는 단순 연산 및 대입만을 수행하기 때문에, \texttt{block_encryption}에 인라인 병합이 가능하다. 
+또한 반복 횟수가 7회로 고정되어 있기 때문에 loop unrolling을 적용하여 변수와 반복문을 제거한다. 
+
+함수 호출과 반복문을 제거하는 것으로 메모리 연산을 절감할 수 있다.
+
+\subsubsection{제곱 연산을 별도 함수로 계산 (\texttt{POLY_MUL_RED})}
+
+\texttt{AUTH_mode} 에서 사용하는 함수인 \texttt{POLY_MUL_RED}는 $GF(2)$ 위의 두 다항식을 곱한 뒤, 64비트로 축소병합 (reduction) 하는 함수이다. 
+두 값이 같은 경우 함수에 값을 하나만 전달해도 되기 때문에, 해당 연산을 별도로 처리하는 함수를 사용하여 연산량을 절감하였다.
+
+\subsubsection{암호화 단계와 인증 단계 병합 (\texttt{CTR_mode}, \texttt{AUTH_mode})}
+
+이미 작성함
+
+\subsection{알고리즘 전 단계 대상 최적화}
+
+\subsubsection{불필요한 데이터 이동 제거}
+
+1. 중복되는 값을 저장한다 
+2. 출력값에 직접 데이터를 쓰지 않고 중간 변수를 거친다
+
+불필요한 데이터 이동을 제거하여 메모리 연산량을 절감하였다.
+
+\subsubsection{8비트 연산을 64비트 연산으로 대체}
+
+기존 코드의 모든 연산은 1바이트 (\texttt{uint8_t}) 단위로 진행된다. 
+대입, XOR 등 더 큰 자료형을 사용해도 되는 연산들을 8바이트 (\texttt{uint64_t}) 단위로 처리하여 연산량을 절감하였다.
+
+\subsubsection{개별 함수에 컴파일러 최적화 적용}
+
+추가적으로 작성한 함수들의 정의에 개별적으로 
+gcc 컴파일러에서 제공하는 최적화를 적용하여 성능을 향상시켰다.
+
+\section{실험 및 결과}
+
+최적화 기법으로 개선된 정도는 '최적화 기법'에 제시한 순서와 동일하게 서술한다.
+기존 코드의 실행 속도를 100으로 하여 개별 최적화를 적용했을때의 실행 속도 및 
+최적화를 전부 적용한 실행 속도를 제시한다.
+
+코드 컴파일과 실행은 '' 환경에서 수행되었으며, ''번 실행한 결과의 평균치를 계산하였다.
+
+table 1: result
+
+코드는 ...에 있다.
