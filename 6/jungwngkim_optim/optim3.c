@@ -13,10 +13,10 @@ int64_t cpucycles(void)
     return ((int64_t)lo) | (((int64_t)hi) << 32);
 }
 
-#define DEBUG 0
-#define DEBUG_KEY 0
-#define DEBUG_ENC 0
-#define DEBUG_HASH 0
+#define DEBUG 1
+#define DEBUG_KEY 1
+#define DEBUG_ENC 1
+#define DEBUG_HASH 1
 
 // BENCH ROUND
 #define BENCH_ROUND (DEBUG ? 1 : 1000)
@@ -284,7 +284,7 @@ void pmr(uint8_t *IN1, uint8_t *IN2, uint8_t *OUT)
 
     int32_t i;
 
-    if (1ll & in1_64) r0 ^= in2_64 << i;
+    if (1ll & in1_64) r0 ^= in2_64;
     for (i = 1; i < 64; i++)
     {
         if ((1ll << i) & in1_64)
